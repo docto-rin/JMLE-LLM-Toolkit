@@ -18,7 +18,7 @@ import re
 from py2slack import slack_notify, send_slack
 
 # 環境変数の読み込み
-load_dotenv()
+load_dotenv(override=True)
 
 # シークレットの使用設定
 use_secret = True
