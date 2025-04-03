@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../IgakuQA119"
+		},
+		{
+			"path": "../med-eval"
+		}
+	],
+	"settings": {}
+}
