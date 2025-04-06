@@ -23,8 +23,9 @@ This repository includes scripts for generating Chain-of-Thought (CoT) style dat
 │   └── JMLE-Gemini-2.5-Pro-CoT-Dataset-Correction.ipynb
 ├── pyproject.toml             # Python project configuration (for uv)
 ├── scripts/                   # Scripts for dataset generation, etc.
-│   ├── README_jmle_gemini_cot_generator.md # Detailed script description (in Japanese)
-│   └── jmle_gemini_cot_generator.py        # CoT data generation script
+│   ├── README.md              # Detailed script description
+│   ├── jmle_gemini_cot_generator.py        # CoT data generation script
+│   └── jmle_gemini_dpo_generator.py        # DPO data generation script
 └── uv.lock                    # Dependency lock file (for uv)
 ```
 
@@ -62,14 +63,9 @@ This repository includes scripts for generating Chain-of-Thought (CoT) style dat
 ### Generate CoT Dataset
 
 Run the `scripts/jmle_gemini_cot_generator.py` script.
-Refer to `scripts/README_jmle_gemini_cot_generator.md` (currently in Japanese) for detailed options.
+Refer to `scripts/README.md` for detailed options.
 
 **Example Usage (specify sample size):**
-```bash
-uv run python scripts/jmle_gemini_cot_generator.py --sample_size 10
-```
-
-**Example Usage (using system prompt):**
 ```bash
 uv run python scripts/jmle_gemini_cot_generator.py --sample_size 10 --use_system_prompt
 ```
