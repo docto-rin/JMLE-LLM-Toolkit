@@ -361,8 +361,8 @@ def parse_arguments():
 
     return parser.parse_args()
 
+
 ### --- メイン処理 --- ###
-# (変更なし、中間保存のトリガーが処理数ベースになっている点に注意)
 def main():
     args = parse_arguments()
 
@@ -408,9 +408,15 @@ def main():
     failed_count = 0
     processed_count = 0
 
-    # 中間保存用のリスト (メモリ効率のため、定期的にファイルに書き出してクリアする)
+    # 中間保存用のリスト
     interim_dpo_pairs_buffer = []
     interim_failed_info_buffer = []
+
+    # 出力ディレクトリ作成
+    os.makedirs(args.output_dir, exist_ok=True)
+    # 中間保存ファイルパス
+    interim_success_path = f"{args.output_dir}/dpo_interim_success.jsonl"
+    interim_failed_path = f"{args.output_dir}/failed_info_interim.jsonl"
 
     for i, example in enumerate(sft_samples):
         processed_count += 1
@@ -421,66 +427,95 @@ def main():
         )
         if dpo_pair:
             dpo_pairs.append(dpo_pair)
-            interim_dpo_pairs_buffer.append(dpo_pair) # 中間保存バッファに追加
+            if args.save_interim:
+                interim_dpo_pairs_buffer.append(dpo_pair) # 中間保存バッファに追加
             successful_pairs += 1
         else:
             gen_info['original_id'] = example_dict.get('id', 'N/A')
             failed_generation_info.append(gen_info)
-            interim_failed_info_buffer.append(gen_info) # 中間保存バッファに追加
+            if args.save_interim:
+                interim_failed_info_buffer.append(gen_info) # 中間保存バッファに追加
             failed_count +=1
         progress_bar.update(1)
         progress_bar.set_postfix({"Success": successful_pairs, "Failed": failed_count})
 
-        # --- 中間保存 ---
+        # --- 中間保存 (JSONL追記に変更) ---
         if args.save_interim and processed_count > 0 and processed_count % args.interim_interval == 0:
             print(f"\nSaving interim results (processed {processed_count} samples)...")
-            os.makedirs(args.output_dir, exist_ok=True)
-            # 成功ペアを追記モードでParquetに保存 (スキーマ一貫性のため注意が必要かも)
-            # NOTE: Parquetへの追記は複雑な場合があるので、JSONLでの追記や、ファイル分割の方が安全な場合がある
-            # ここでは簡単化のため、バッファをDataFrameにして追記する試み (既存ファイルがない場合は新規作成)
+
+            # 成功ペアを追記モードでJSONLに保存
             if interim_dpo_pairs_buffer:
-                interim_success_df = pd.DataFrame(interim_dpo_pairs_buffer)
-                parquet_path = f"{args.output_dir}/dpo_interim_success.parquet"
-                if os.path.exists(parquet_path):
-                    interim_success_df.to_parquet(parquet_path, index=False, engine='pyarrow', append=True)
-                else:
-                    interim_success_df.to_parquet(parquet_path, index=False, engine='pyarrow')
-                interim_dpo_pairs_buffer = [] # バッファクリア
+                 try:
+                     with open(interim_success_path, "a", encoding='utf-8') as f:
+                        for pair in interim_dpo_pairs_buffer:
+                            f.write(json.dumps(pair, ensure_ascii=False) + "\n")
+                     print(f"Interim successful pairs appended to: {interim_success_path}")
+                     interim_dpo_pairs_buffer = [] # バッファクリア
+                 except Exception as e:
+                     print(f"Error writing interim success JSONL: {e}")
+                     # エラーが発生しても処理を続行するため、バッファはクリアしないでおくか、
+                     # あるいはエラー処理戦略を決める (例: リトライ、ログ記録のみ)
+                     # ここではクリアする実装を維持
 
             # 失敗情報を追記モードでJSONLに保存
             if interim_failed_info_buffer:
-                 with open(f"{args.output_dir}/failed_info_interim.jsonl", "a", encoding='utf-8') as f:
-                    for info in interim_failed_info_buffer:
-                        f.write(json.dumps(info, ensure_ascii=False) + "\n")
-                 interim_failed_info_buffer = [] # バッファクリア
+                 try:
+                     with open(interim_failed_path, "a", encoding='utf-8') as f:
+                        for info in interim_failed_info_buffer:
+                            f.write(json.dumps(info, ensure_ascii=False) + "\n")
+                     print(f"Interim failed info appended to: {interim_failed_path}")
+                     interim_failed_info_buffer = [] # バッファクリア
+                 except Exception as e:
+                     print(f"Error writing interim failed JSONL: {e}")
+                     # 同様にエラー処理戦略を検討
+                     interim_failed_info_buffer = [] # クリアする実装を維持
 
-            print(f"Interim results saved (Total Success: {successful_pairs}, Total Failed: {failed_count}).")
+            print(f"Interim results saved check complete (Total Success: {successful_pairs}, Total Failed: {failed_count}).")
 
     progress_bar.close()
     print(f"\nGeneration complete.")
     print(f"Successfully created {successful_pairs} DPO pairs.")
     print(f"Failed or skipped to generate rejected response for {failed_count} samples.")
 
+    # --- [追加] ループ終了後に残っているバッファを書き出す ---
+    if args.save_interim:
+        print("\nSaving any remaining interim buffer...")
+        if interim_dpo_pairs_buffer:
+            try:
+                with open(interim_success_path, "a", encoding='utf-8') as f:
+                    for pair in interim_dpo_pairs_buffer:
+                        f.write(json.dumps(pair, ensure_ascii=False) + "\n")
+                print(f"Final remaining successful pairs appended to: {interim_success_path}")
+            except Exception as e:
+                print(f"Error writing final interim success JSONL: {e}")
+        if interim_failed_info_buffer:
+            try:
+                with open(interim_failed_path, "a", encoding='utf-8') as f:
+                    for info in interim_failed_info_buffer:
+                        f.write(json.dumps(info, ensure_ascii=False) + "\n")
+                print(f"Final remaining failed info appended to: {interim_failed_path}")
+            except Exception as e:
+                print(f"Error writing final interim failed JSONL: {e}")
+        print("Finished saving remaining buffer.")
+
     # --- 最終データセットの準備と保存 ---
     final_dataset_dict = None
-    if not dpo_pairs:
+    if not dpo_pairs: # dpo_pairsリストは全成功ペアを保持している
         print("No DPO pairs were generated. Saving only failure log.")
     else:
-        # 中間保存で追記していた場合、最後に全データをまとめる必要がある
-        # 簡単化のため、ここではメモリ上の dpo_pairs を使う (大規模データでは要見直し)
-        dpo_df = pd.DataFrame(dpo_pairs)
-        os.makedirs(args.output_dir, exist_ok=True)
-
-        # Parquet形式で保存
+        # メモリ上の dpo_pairs リスト全体から最終データを作成
+        # 注意: 非常に大きなデータセットの場合、メモリに全ペアを保持するのは非効率。
+        # その場合は、中間保存されたJSONLファイルを読み込んで処理する方式に変更する必要がある。
+        # 現在の実装はメモリに全ペアを保持する前提。
         try:
+            dpo_df = pd.DataFrame(dpo_pairs)
+
+            # Parquet形式で保存 (追記ではないので問題ない)
             parquet_path = f"{args.output_dir}/dpo_dataset.parquet"
-            dpo_df.to_parquet(parquet_path, index=False)
+            dpo_df.to_parquet(parquet_path, index=False, engine='pyarrow') # append=False (デフォルト)
             print(f"Final DPO dataset saved as Parquet: {parquet_path}")
-        except Exception as e:
-            print(f"Error saving final dataset as Parquet: {e}")
 
-        # Hugging Face Datasets形式で準備
-        try:
+            # Hugging Face Datasets形式で準備
             dpo_features = Features({
                 'prompt': Value('string'),
                 'chosen': Value('string'),
@@ -492,15 +527,14 @@ def main():
             save_path = os.path.join(args.output_dir, "hf_dataset")
             final_dataset_dict.save_to_disk(save_path)
             print(f"DPO dataset also saved in HF format locally: {save_path}")
-        except Exception as e:
-            print(f"Error creating or saving in HF Datasets format: {e}")
-            final_dataset_dict = None
 
-    # 失敗情報の最終保存
-    os.makedirs(args.output_dir, exist_ok=True)
+        except Exception as e:
+            print(f"Error during final dataset creation/saving: {e}")
+            final_dataset_dict = None # エラー時はNoneにする
+
+    # 失敗情報の最終保存 (変更なし、全件をメモリから書き出す)
     try:
         failed_log_path = f"{args.output_dir}/failed_generation_info_total.jsonl"
-        # 中間保存を使っていた場合も、最後に全件書き出すのが確実
         with open(failed_log_path, "w", encoding='utf-8') as f:
             for info in failed_generation_info:
                 f.write(json.dumps(info, ensure_ascii=False) + "\n")
