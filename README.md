@@ -20,7 +20,9 @@ This repository includes scripts for generating Chain-of-Thought (CoT) style dat
 ├── .gitignore                 # Git ignore list
 ├── Med-LLM-Jp.code-workspace  # VS Code workspace settings
 ├── colab_notebooks/           # Notebooks for dataset correction/analysis
-│   └── JMLE-Gemini-2.5-Pro-CoT-Dataset-Correction.ipynb
+│   ├── JMLE-Gemini-2.5-Pro-CoT-Dataset-Correction.ipynb  # Postprocess CoT dataset
+│   ├── JMLE-CPT.ipynb         # CPT trainer
+│   └── JMLE-SFT.ipynb         # SFT trainer
 ├── pyproject.toml             # Python project configuration (for uv)
 ├── scripts/                   # Scripts for dataset generation, etc.
 │   ├── README.md              # Detailed script description
